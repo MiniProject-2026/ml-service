@@ -32,8 +32,8 @@ for m in MODELS:
     if not os.path.exists(m["path"]):
         print(f"Downloading {m['name']} from Google Drive...")
         gdown.download(
-            f"https://drive.google.com/uc?id={m['drive_id']}",
-            m["path"], quiet=False, fuzzy=True
+            id=m["drive_id"],
+            output=m["path"], quiet=False
         )
         print(f"{m['name']} downloaded successfully!")
 
@@ -69,6 +69,8 @@ def predict():
             "votes": votes
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
     finally:
         if os.path.exists(filepath):

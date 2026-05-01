@@ -3,8 +3,6 @@ import json
 import os
 from PIL import Image
 import tensorflow as tf
-from tensorflow.keras import layers, Model
-from tensorflow.keras.applications import EfficientNetB0, InceptionV3, ResNet50, VGG16
 
 BASE_DIR = os.path.dirname(__file__)
 CLASS_INDICES_PATH = os.path.join(BASE_DIR, "class_indices.json")
@@ -15,64 +13,29 @@ with open(CLASS_INDICES_PATH, "r") as f:
 NUM_CLASSES = len(class_indices)
 
 
-def build_efficientnet(num_classes):
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    base = EfficientNetB0(include_top=False, weights=None, input_tensor=inputs)
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return Model(inputs=inputs, outputs=outputs)
-
-
-def build_inceptionv3(num_classes):
-    inputs = tf.keras.Input(shape=(299, 299, 3))
-    base = InceptionV3(include_top=False, weights=None, input_tensor=inputs)
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return Model(inputs=inputs, outputs=outputs)
-
-
-def build_resnet50(num_classes):
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    base = ResNet50(include_top=False, weights=None, input_tensor=inputs)
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return Model(inputs=inputs, outputs=outputs)
-
-
-def build_vgg16(num_classes):
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    base = VGG16(include_top=False, weights=None, input_tensor=inputs)
-    x = layers.GlobalAveragePooling2D()(base.output)
-    x = layers.Dense(256, activation='relu')(x)
-    outputs = layers.Dense(num_classes, activation='softmax')(x)
-    return Model(inputs=inputs, outputs=outputs)
-
-
 print("Loading all models...")
 
-efficientnet = build_efficientnet(NUM_CLASSES)
-efficientnet.load_weights(os.path.join(BASE_DIR, "plant_disease_prediction_EfficientNetB0_model.h5"), by_name=False)
+efficientnet = tf.keras.models.load_model(
+    os.path.join(BASE_DIR, "plant_disease_prediction_EfficientNetB0_model.h5"), compile=False)
 print("EfficientNetB0 loaded ✅")
 
-inceptionv3 = build_inceptionv3(NUM_CLASSES)
-inceptionv3.load_weights(os.path.join(BASE_DIR, "InceptionV3.h5"), by_name=False)
+inceptionv3 = tf.keras.models.load_model(
+    os.path.join(BASE_DIR, "InceptionV3.h5"), compile=False)
 print("InceptionV3 loaded ✅")
 
-resnet50 = tf.keras.models.load_model(os.path.join(BASE_DIR, "ResNet50.keras"))
+resnet50 = tf.keras.models.load_model(
+    os.path.join(BASE_DIR, "ResNet50.keras"), compile=False)
 print("ResNet50 loaded ✅")
 
-vgg16 = build_vgg16(NUM_CLASSES)
-vgg16.load_weights(os.path.join(BASE_DIR, "VGG16.h5"), by_name=False)
+vgg16 = tf.keras.models.load_model(
+    os.path.join(BASE_DIR, "VGG16.h5"), compile=False)
 print("VGG16 loaded ✅")
 
 MODELS = [
-    {"name": "EfficientNetB0", "model": efficientnet, "size": (224, 224)},
-    {"name": "InceptionV3",    "model": inceptionv3,  "size": (299, 299)},
-    {"name": "ResNet50",       "model": resnet50,      "size": (224, 224)},
-    {"name": "VGG16",          "model": vgg16,         "size": (224, 224)},
+    {"name": "EfficientNetB0", "model": efficientnet},
+    {"name": "InceptionV3",    "model": inceptionv3},
+    {"name": "ResNet50",       "model": resnet50},
+    {"name": "VGG16",          "model": vgg16},
 ]
 
 
@@ -84,11 +47,13 @@ def preprocess(image_path, target_size):
 
 
 def predict_image_ensemble(image_path):
-    vote_counts = {}   # class_name -> vote count
-    confidences = {}   # class_name -> list of confidence scores
+    vote_counts = {}
+    confidences = {}
 
     for m in MODELS:
-        img = preprocess(image_path, m["size"])
+        # Read input size directly from the model
+        _, h, w, _ = m["model"].input_shape
+        img = preprocess(image_path, (h, w))
         preds = m["model"].predict(img, verbose=0)
         idx = int(np.argmax(preds))
         cls = class_indices[str(idx)]
@@ -105,7 +70,6 @@ def predict_image_ensemble(image_path):
     winner = max(top_classes, key=lambda c: np.mean(confidences[c]))
     avg_confidence = float(np.mean(confidences[winner]))
 
-    # Build votes summary for response
     votes_summary = {cls: count for cls, count in vote_counts.items()}
 
     return winner, avg_confidence, votes_summary
